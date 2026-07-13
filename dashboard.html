@@ -1,0 +1,987 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MEC Resource Scheduler - Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Inter:wght@300;400;500;600&display=swap');
+
+  :root {
+    --bg: #0A0F1E;
+    --panel: #111827;
+    --border: #1E293B;
+    --cyan: #00D4FF;
+    --amber: #F59E0B;
+    --emerald: #10B981;
+    --crimson: #EF4444;
+    --violet: #8B5CF6;
+    --muted: #64748B;
+    --text: #E2E8F0;
+    --subtext: #94A3B8;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    font-size: 17px;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  nav {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 1rem; height: 56px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; z-index: 100;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+  }
+  .nav-brand {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.95rem; font-weight: 700;
+    color: var(--cyan); letter-spacing: 0.08em;
+  }
+  .nav-status {
+    display: flex; align-items: center; gap: 0.5rem;
+    font-size: 0.9rem; color: var(--subtext);
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .pulse-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--emerald);
+    animation: pulse-dot 1.5s ease-in-out infinite;
+  }
+  @keyframes pulse-dot { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.4;transform:scale(0.7)} }
+
+  .nav-controls { display: flex; gap: 0.5rem; align-items: center; }
+  .btn {
+    padding: 0.35rem 0.9rem;
+    border-radius: 6px; border: 1px solid var(--border);
+    background: transparent; color: var(--text);
+    font-size: 0.92rem; font-family: 'Inter', sans-serif;
+    cursor: pointer; transition: all 0.2s;
+  }
+  .btn:hover { border-color: var(--cyan); color: var(--cyan); }
+  .btn-run { background: var(--cyan); color: var(--bg); font-weight: 600; border-color: var(--cyan); }
+  .btn-run:hover { background: #00b8d9; }
+  .btn-run.running { background: var(--crimson); border-color: var(--crimson); color: #fff; }
+
+  .main {
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    grid-template-rows: 420px;
+    gap: 1px; background: var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .map-section { background: var(--bg); position: relative; overflow: hidden; }
+  .map-header {
+    position: absolute; top: 1rem; left: 1rem; z-index: 10;
+    display: flex; align-items: center; gap: 0.75rem;
+  }
+  .map-title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.82rem; color: var(--subtext);
+    letter-spacing: 0.1em; text-transform: uppercase;
+  }
+  .scenario-tag {
+    padding: 0.2rem 0.6rem;
+    border-radius: 4px; border: 1px solid var(--cyan);
+    font-size: 0.78rem; color: var(--cyan);
+    font-family: 'JetBrains Mono', monospace;
+  }
+  canvas#mapCanvas { width: 100%; height: 100%; display: block; }
+
+  .map-legend {
+    position: absolute; bottom: 1rem; left: 1rem;
+    display: flex; gap: 1rem;
+    font-size: 0.78rem; color: var(--subtext);
+    font-family: 'JetBrains Mono', monospace;
+    flex-wrap: wrap;
+  }
+  .legend-item { display: flex; align-items: center; gap: 0.35rem; }
+  .legend-dot { width: 8px; height: 8px; border-radius: 50%; }
+
+  .metrics-panel {
+    background: var(--panel); padding: 1.25rem;
+    display: flex; flex-direction: column; gap: 1rem;
+    overflow-y: auto;
+  }
+  .panel-title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem; color: var(--subtext);
+    letter-spacing: 0.12em; text-transform: uppercase;
+    border-bottom: 1px solid var(--border); padding-bottom: 0.6rem;
+  }
+
+  .metric-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+  .metric-card {
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 8px; padding: 0.85rem;
+  }
+  .metric-label {
+    font-size: 0.76rem; color: var(--subtext);
+    font-family: 'JetBrains Mono', monospace;
+    letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 0.3rem;
+  }
+  .metric-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 1.55rem; font-weight: 700; line-height: 1;
+  }
+  .metric-unit { font-size: 0.78rem; color: var(--subtext); margin-left: 0.2rem; }
+  .metric-delta { font-size: 0.78rem; margin-top: 0.25rem; font-family: 'JetBrains Mono', monospace; }
+  .up { color: var(--emerald); }
+  .down { color: var(--crimson); }
+
+  .algo-selector { display: flex; flex-direction: column; gap: 0.4rem; }
+  .algo-btn {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0.55rem 0.75rem;
+    border-radius: 6px; border: 1px solid var(--border);
+    background: var(--bg); cursor: pointer; transition: all 0.15s;
+    font-size: 0.9rem; font-family: 'Inter', sans-serif; color: var(--text);
+  }
+  .algo-btn:hover { border-color: var(--muted); }
+  .algo-btn.selected { border-color: var(--cyan); background: rgba(0,212,255,0.06); }
+  .algo-badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem; padding: 0.15rem 0.4rem; border-radius: 3px;
+  }
+
+  .spark-row { display: flex; flex-direction: column; gap: 0.5rem; }
+  .spark-label {
+    display: flex; justify-content: space-between;
+    font-size: 0.78rem; margin-bottom: 0.25rem;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .spark-bar-bg { height: 4px; border-radius: 2px; background: var(--border); overflow: hidden; }
+  .spark-bar-fill { height: 100%; border-radius: 2px; transition: width 0.4s ease; }
+
+  .charts-section { padding: 1.5rem 2rem; display: flex; flex-direction: column; gap: 1.5rem; }
+  .charts-header { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+  .charts-title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.85rem; color: var(--subtext);
+    letter-spacing: 0.1em; text-transform: uppercase;
+  }
+  .tab-row { display: flex; gap: 0.4rem; }
+  .tab {
+    padding: 0.3rem 0.75rem;
+    border-radius: 5px; border: 1px solid var(--border);
+    background: transparent; color: var(--subtext);
+    font-size: 0.85rem; cursor: pointer; transition: all 0.15s;
+    font-family: 'Inter', sans-serif;
+  }
+  .tab:hover { color: var(--text); border-color: var(--muted); }
+  .tab.active { background: var(--border); color: var(--text); border-color: var(--muted); }
+
+  .charts-grid { display: grid; grid-template-columns: repeat(2, minmax(280px, 1fr)); gap: 1rem; }
+  .chart-card {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 10px; padding: 1rem;
+  }
+  .chart-card-title {
+    font-size: 0.8rem; color: var(--subtext);
+    font-family: 'JetBrains Mono', monospace;
+    letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 0.75rem;
+  }
+  .chart-wrap { position: relative; height: 180px; }
+
+  .bar-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-top: 1rem; }
+  .bar-card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 1rem; }
+  .bar-card-title {
+    font-size: 0.8rem; color: var(--subtext);
+    font-family: 'JetBrains Mono', monospace;
+    letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 0.75rem;
+  }
+  .bar-wrap { position: relative; height: 160px; }
+
+  .benchmark-title {
+    font-size: 0.86rem;
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--cyan);
+    letter-spacing: 0.06em;
+    margin-bottom: 0.5rem;
+    text-transform: uppercase;
+  }
+
+  .benchmark-meta {
+    font-size: 0.82rem;
+    color: var(--subtext);
+    margin-bottom: 0.7rem;
+    line-height: 1.45;
+  }
+
+  .benchmark-meta .meta-chip {
+    display: inline-block;
+    margin: 0.15rem 0.35rem 0.15rem 0;
+    padding: 0.15rem 0.45rem;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,0.02);
+  }
+
+  .bench-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 0.82rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  .bench-table thead th {
+    text-align: left;
+    padding: 0.55rem 0.6rem;
+    background: rgba(0,212,255,0.08);
+    color: #bfefff;
+    border-bottom: 1px solid var(--border);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.76rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+
+  .bench-table tbody td {
+    padding: 0.55rem 0.6rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .bench-table tbody tr:nth-child(even) {
+    background: rgba(255,255,255,0.02);
+  }
+
+  .bench-table tbody tr:last-child td {
+    border-bottom: none;
+  }
+
+  .bench-table .algo-cell {
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--text);
+  }
+
+  .bench-table .best-reward {
+    color: var(--emerald);
+    font-weight: 700;
+  }
+
+  .bench-table .fastest-runtime {
+    color: var(--amber);
+    font-weight: 700;
+  }
+
+  .step-counter {
+    position: absolute; bottom: 1rem; right: 1rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.8rem; color: var(--muted);
+  }
+
+  @media (max-width: 1200px) {
+    .main { grid-template-columns: 1fr; grid-template-rows: 360px auto; }
+    .charts-grid { grid-template-columns: 1fr 1fr; }
+    .bar-grid { grid-template-columns: 1fr; }
+  }
+
+  @media (max-width: 760px) {
+    nav { height: auto; padding: 0.8rem; }
+    .nav-controls { width: 100%; flex-wrap: wrap; }
+    .charts-section { padding: 1rem; }
+    .charts-grid { grid-template-columns: 1fr; }
+    .metric-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-brand">MEC - RESOURCE - SCHEDULER</div>
+  <div class="nav-status">
+    <div class="pulse-dot" id="statusDot"></div>
+    <span id="statusText">IDLE</span>
+  </div>
+  <div class="nav-controls">
+    <select id="scenarioSelect" class="btn" style="padding:0.35rem 0.6rem;appearance:none;background:var(--panel)">
+      <option value="synthetic">Synthetic - Comparable</option>
+      <option value="KAIST">KAIST - Trace Driven</option>
+      <option value="DCU">DCU - Trace Driven</option>
+    </select>
+    <input id="episodesInput" class="btn" style="width:90px;background:var(--panel)" type="number" min="10" step="10" value="200" title="Episodes">
+    <input id="seedInput" class="btn" style="width:80px;background:var(--panel)" type="number" min="0" step="1" value="0" title="Seed">
+    <button class="btn btn-run" id="runBtn" onclick="toggleBackendRun()">Start Training</button>
+    <select id="benchAlgoPreset" class="btn" style="padding:0.35rem 0.6rem;appearance:none;background:var(--panel)" title="Benchmark Algos">
+      <option value="maa2c,mappo,maddpg,random,greedy,fifo" selected>All (RL + Baselines)</option>
+      <option value="maa2c,mappo,maddpg">RL Only</option>
+      <option value="random,greedy,fifo">Baselines Only</option>
+      <option value="maa2c,greedy">MAA2C vs Greedy</option>
+      <option value="mappo,fifo">MAPPO vs FIFO</option>
+      <option value="maddpg,random">MADDPG vs Random</option>
+    </select>
+    <select id="benchSeedPreset" class="btn" style="padding:0.35rem 0.6rem;appearance:none;background:var(--panel)" title="Benchmark Seeds">
+      <option value="0" selected>Seed 0</option>
+      <option value="0,1">Seeds 0,1</option>
+      <option value="0,1,2">Seeds 0,1,2</option>
+      <option value="0,1,2,3,4">Seeds 0-4</option>
+    </select>
+    <button class="btn" id="benchmarkBtn" onclick="startBenchmark()">Run Benchmark</button>
+    <button class="btn" id="resetBtn" onclick="resetDashboardState(true)">Reset</button>
+  </div>
+</nav>
+
+<div class="main">
+  <div class="map-section">
+    <div class="map-header">
+      <span class="map-title">Network Topology</span>
+      <span class="scenario-tag" id="scenarioTag">SYNTHETIC</span>
+    </div>
+    <canvas id="mapCanvas"></canvas>
+    <div class="map-legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#00D4FF"></div>Edge Server</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#F59E0B"></div>Mobile User</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#10B981"></div>Training Live</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#EF4444"></div>Stop Requested</div>
+    </div>
+    <div class="step-counter" id="stepCounter">Episode: 0</div>
+  </div>
+
+  <div class="metrics-panel">
+    <div class="panel-title">Live Metrics</div>
+    <div class="metric-grid">
+      <div class="metric-card">
+        <div class="metric-label">Reward</div>
+        <div class="metric-value" style="color:var(--cyan)" id="mReward">0.00</div>
+        <div class="metric-delta" id="mRewardDelta">-</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Episode</div>
+        <div class="metric-value" style="color:var(--emerald)" id="mEpisode">0</div>
+        <div class="metric-delta" style="color:var(--subtext)">latest reported</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Dataset</div>
+        <div class="metric-value" style="color:var(--amber);font-size:1rem" id="mDataset">synthetic</div>
+        <div class="metric-delta" id="mComparable" style="color:var(--subtext)">baseline mode</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Runtime</div>
+        <div class="metric-value" style="color:var(--text);font-size:1rem" id="mRuntime">-<span class="metric-unit">s</span></div>
+        <div class="metric-delta" style="color:var(--subtext)">from done event</div>
+      </div>
+    </div>
+
+    <div class="panel-title">Algorithm</div>
+    <div class="algo-selector" id="algoSelector">
+      <div class="algo-btn selected" data-algo="maa2c" onclick="selectAlgo('maa2c', this)">
+        <span>MAA2C</span>
+        <span class="algo-badge" style="background:rgba(0,212,255,0.15);color:var(--cyan)">RL</span>
+      </div>
+      <div class="algo-btn" data-algo="mappo" onclick="selectAlgo('mappo', this)">
+        <span>MAPPO</span>
+        <span class="algo-badge" style="background:rgba(139,92,246,0.15);color:var(--violet)">RL</span>
+      </div>
+      <div class="algo-btn" data-algo="maddpg" onclick="selectAlgo('maddpg', this)">
+        <span>MADDPG</span>
+        <span class="algo-badge" style="background:rgba(16,185,129,0.15);color:var(--emerald)">RL</span>
+      </div>
+      <div class="algo-btn" data-algo="random" onclick="selectAlgo('random', this)">
+        <span>RANDOM</span>
+        <span class="algo-badge" style="background:rgba(100,116,139,0.15);color:var(--muted)">BASELINE</span>
+      </div>
+      <div class="algo-btn" data-algo="greedy" onclick="selectAlgo('greedy', this)">
+        <span>GREEDY</span>
+        <span class="algo-badge" style="background:rgba(245,158,11,0.15);color:var(--amber)">BASELINE</span>
+      </div>
+      <div class="algo-btn" data-algo="fifo" onclick="selectAlgo('fifo', this)">
+        <span>FIFO</span>
+        <span class="algo-badge" style="background:rgba(239,68,68,0.15);color:var(--crimson)">BASELINE</span>
+      </div>
+    </div>
+
+    <div class="panel-title">Progress Bars</div>
+    <div class="spark-row" id="edgeLoadBars"></div>
+  </div>
+</div>
+
+<div class="charts-section">
+  <div>
+    <div id="benchmarkSummary" class="chart-card" style="margin-bottom:1rem; display:none;">
+      <div class="benchmark-title" id="benchmarkTitle">Benchmark Summary</div>
+      <div id="benchmarkSummaryMeta" class="benchmark-meta"></div>
+      <div style="overflow:auto;">
+        <table id="benchmarkSummaryTable" class="bench-table"></table>
+      </div>
+    </div>
+
+    <div class="charts-header">
+      <span class="charts-title">Training History - Episode Metrics</span>
+      <div class="tab-row">
+        <button class="tab active" onclick="switchTab('line',this)">Per Episode</button>
+        <button class="tab" onclick="switchTab('bar',this)">Algorithm Comparison</button>
+      </div>
+    </div>
+
+    <div id="lineView" class="charts-grid" style="margin-top:1rem">
+      <div class="chart-card">
+        <div class="chart-card-title">Composite Reward</div>
+        <div class="chart-wrap"><canvas id="cReward"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-card-title">Smoothed Reward Proxy</div>
+        <div class="chart-wrap"><canvas id="cEnergy"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-card-title">Reward Delta Magnitude</div>
+        <div class="chart-wrap"><canvas id="cLatency"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-card-title">Episode Index</div>
+        <div class="chart-wrap"><canvas id="cTasks"></canvas></div>
+      </div>
+    </div>
+
+    <div id="barView" style="display:none">
+      <div class="bar-grid">
+        <div class="bar-card">
+          <div class="bar-card-title">Mean Reward by Algorithm</div>
+          <div class="bar-wrap"><canvas id="bReward"></canvas></div>
+        </div>
+        <div class="bar-card">
+          <div class="bar-card-title">Recent Reward Variance</div>
+          <div class="bar-wrap"><canvas id="bEnergy"></canvas></div>
+        </div>
+        <div class="bar-card">
+          <div class="bar-card-title">Episodes Recorded</div>
+          <div class="bar-wrap"><canvas id="bTasks"></canvas></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+<script>
+const ALGO_COLORS={maa2c:'#00D4FF',mappo:'#8B5CF6',maddpg:'#10B981',random:'#64748B',greedy:'#F59E0B',fifo:'#EF4444'};
+const ALGOS=['maa2c','mappo','maddpg','random','greedy','fifo'];
+const TAG={synthetic:'SYNTHETIC',KAIST:'KAIST',DCU:'DCU'};
+
+let selectedAlgo='maa2c';
+let selectedDataset='synthetic';
+let running=false;
+let latestEpisode=0;
+let lastReward=null;
+let runtimeSec='-';
+
+const hist={};
+ALGOS.forEach(a=>{ hist[a]={r:[],e:[],l:[],t:[]}; });
+
+const mc=document.getElementById('mapCanvas');
+const cx=mc.getContext('2d');
+let edges=[];
+let users=[];
+let frame=0;
+
+function algoProfile(){
+  if(selectedAlgo==='greedy') return {spdMin:0.45, spdMax:0.9, loadBias:0.10};
+  if(selectedAlgo==='fifo') return {spdMin:0.6, spdMax:1.0, loadBias:0.16};
+  if(selectedAlgo==='random') return {spdMin:0.95, spdMax:1.8, loadBias:0.22};
+  if(selectedAlgo==='maddpg') return {spdMin:0.55, spdMax:1.15, loadBias:0.14};
+  if(selectedAlgo==='mappo') return {spdMin:0.6, spdMax:1.2, loadBias:0.15};
+  return {spdMin:0.65, spdMax:1.25, loadBias:0.13};
+}
+
+function edgePositionForDataset(edgeCount, W, H, pad, placed){
+  let xMin=pad, xMax=W-pad, yMin=pad, yMax=H-pad;
+  if(selectedDataset==='KAIST'){
+    xMin=pad+W*0.06; xMax=W-pad-W*0.06;
+    yMin=pad+H*0.05; yMax=H-pad-H*0.05;
+  }else if(selectedDataset==='DCU'){
+    xMin=pad+W*0.04; xMax=W-pad-W*0.03;
+    yMin=pad+H*0.08; yMax=H-pad-H*0.08;
+  }
+
+  const minDist=Math.max(26, Math.min(W,H)/Math.sqrt(edgeCount)*0.55);
+  for(let t=0;t<180;t++){
+    const x=xMin + Math.random()*(xMax-xMin);
+    const y=yMin + Math.random()*(yMax-yMin);
+    let ok=true;
+    for(let i=0;i<placed.length;i++){
+      const dx=x-placed[i].x, dy=y-placed[i].y;
+      if(dx*dx+dy*dy < minDist*minDist){ ok=false; break; }
+    }
+    if(ok) return {x,y};
+  }
+
+  return {
+    x: xMin + Math.random()*(xMax-xMin),
+    y: yMin + Math.random()*(yMax-yMin)
+  };
+}
+
+function resizeMap(){
+  const p=mc.parentElement;
+  mc.width=p.clientWidth;
+  mc.height=p.clientHeight;
+}
+
+function initNetwork(){
+  const W=mc.width,H=mc.height,pad=60;
+  const prof=algoProfile();
+  const edgeCount=selectedDataset==='synthetic'?8:selectedDataset==='KAIST'?14:12;
+  const userCount=selectedDataset==='synthetic'?12:selectedDataset==='KAIST'?22:18;
+
+  edges=[];
+  for(let i=0;i<edgeCount;i++){
+    const pos=edgePositionForDataset(edgeCount, W, H, pad, edges);
+    edges.push({
+      id:i,
+      x:pos.x,
+      y:pos.y,
+      load:Math.max(0, Math.min(1, Math.random()*0.3 + prof.loadBias)),
+      phase:Math.random()*Math.PI*2
+    });
+  }
+
+  users=[];
+  for(let i=0;i<userCount;i++){
+    users.push({
+      x:pad+Math.random()*(W-pad*2),
+      y:pad+Math.random()*(H-pad*2),
+      tx:pad+Math.random()*(W-pad*2),
+      ty:pad+Math.random()*(H-pad*2),
+      spd:prof.spdMin+Math.random()*(prof.spdMax-prof.spdMin)
+    });
+  }
+
+  renderEdgeLoadBars();
+}
+
+function drawMap(){
+  const W=mc.width,H=mc.height;
+  cx.clearRect(0,0,W,H);
+  frame++;
+
+  cx.strokeStyle='rgba(30,41,59,0.5)';
+  cx.lineWidth=0.5;
+  for(let x=0;x<W;x+=40){cx.beginPath();cx.moveTo(x,0);cx.lineTo(x,H);cx.stroke();}
+  for(let y=0;y<H;y+=40){cx.beginPath();cx.moveTo(0,y);cx.lineTo(W,y);cx.stroke();}
+
+  edges.forEach(e=>{
+    for(let r=1;r<=3;r++){
+      cx.beginPath();
+      cx.arc(e.x,e.y,18*r*0.8,0,Math.PI*2);
+      cx.strokeStyle='rgba(0,212,255,'+(0.1/r)+')';
+      cx.lineWidth=1;
+      cx.stroke();
+    }
+    const lc=e.load>0.8?'#EF4444':e.load>0.5?'#F59E0B':'#00D4FF';
+    cx.beginPath();cx.arc(e.x,e.y,9,0,Math.PI*2);
+    cx.fillStyle=lc+'22';cx.fill();cx.strokeStyle=lc;cx.lineWidth=1.5;cx.stroke();
+  });
+
+  users.forEach(u=>{
+    const dx=u.tx-u.x,dy=u.ty-u.y,d=Math.sqrt(dx*dx+dy*dy);
+    if(d<5){
+      u.tx=60+Math.random()*(W-120);
+      u.ty=60+Math.random()*(H-120);
+    }else{
+      u.x+=dx/d*u.spd;
+      u.y+=dy/d*u.spd;
+    }
+    cx.beginPath();
+    cx.arc(u.x,u.y,4,0,Math.PI*2);
+    cx.fillStyle='#F59E0B33';
+    cx.fill();
+    cx.strokeStyle='#F59E0B';
+    cx.lineWidth=1.2;
+    cx.stroke();
+  });
+
+  requestAnimationFrame(drawMap);
+}
+
+function renderEdgeLoadBars(){
+  document.getElementById('edgeLoadBars').innerHTML=edges.slice(0,6).map(e=>{
+    const pct=Math.round(e.load*100);
+    const col=e.load>0.8?'#EF4444':e.load>0.5?'#F59E0B':'#00D4FF';
+    return '<div class="spark-item"><div class="spark-label"><span style="color:var(--subtext)">Edge '+e.id+'</span><span style="color:'+col+'">'+pct+'%</span></div><div class="spark-bar-bg"><div class="spark-bar-fill" style="width:'+pct+'%;background:'+col+'"></div></div></div>';
+  }).join('');
+}
+
+function setRunningUI(isRunning){
+  running=isRunning;
+  const btn=document.getElementById('runBtn');
+  if(isRunning){
+    btn.textContent='Stop Training';
+    btn.classList.add('running');
+  }else{
+    btn.textContent='Start Training';
+    btn.classList.remove('running');
+  }
+}
+
+function updateStatus(text,color){
+  document.getElementById('statusText').textContent=text;
+  document.getElementById('statusDot').style.background=color;
+}
+
+function selectAlgo(algo,el){
+  selectedAlgo=algo;
+  document.querySelectorAll('.algo-btn').forEach(b=>b.classList.remove('selected'));
+  el.classList.add('selected');
+  
+  initNetwork();
+  updateStatus('SELECTED '+algo.toUpperCase(), '#94A3B8');
+}
+
+function toggleBackendRun(){
+  if(running){
+    socket.emit('stop_training',{});
+    updateStatus('STOP REQUESTED','#EF4444');
+    return;
+  }
+
+  const episodes=parseInt(document.getElementById('episodesInput').value||'200',10);
+  const seed=parseInt(document.getElementById('seedInput').value||'0',10);
+  socket.emit('start_training',{
+    algo:selectedAlgo,
+    dataset:selectedDataset,
+    episodes:episodes,
+    seed:seed
+  });
+}
+
+function startBenchmark(){
+  if(running){
+    updateStatus('A RUN IS IN PROGRESS', '#EF4444');
+    return;
+  }
+  const episodes=parseInt(document.getElementById('episodesInput').value||'200',10);
+  const algosRaw=document.getElementById('benchAlgoPreset').value||'';
+  const seedsRaw=document.getElementById('benchSeedPreset').value||'';
+  const benchAlgos=algosRaw.split(',').map(s=>s.trim()).filter(Boolean);
+  const seeds=seedsRaw.split(',').map(s=>parseInt(s.trim(),10)).filter(n=>!Number.isNaN(n));
+  if(!benchAlgos.length || !seeds.length){
+    updateStatus('INVALID BENCHMARK ALGOS/SEEDS', '#EF4444');
+    return;
+  }
+  updateStatus('STARTING BENCHMARK', '#00D4FF');
+  socket.emit('start_benchmark',{
+    dataset:selectedDataset,
+    episodes:episodes,
+    bench_algos:benchAlgos,
+    seeds:seeds
+  });
+}
+
+function resetDashboardState(requestStop){
+  if(requestStop && running){
+    socket.emit('stop_training',{});
+  }
+
+  ALGOS.forEach(a=>{ hist[a]={r:[],e:[],l:[],t:[]}; });
+  updateCharts();
+
+  latestEpisode=0;
+  lastReward=null;
+  runtimeSec='-';
+  setRunningUI(false);
+
+  document.getElementById('mReward').textContent='0.00';
+  document.getElementById('mEpisode').textContent='0';
+  document.getElementById('mRuntime').innerHTML='-<span class="metric-unit">s</span>';
+  document.getElementById('mRewardDelta').textContent='-';
+  document.getElementById('mRewardDelta').className='metric-delta';
+  document.getElementById('mDataset').textContent=selectedDataset;
+  document.getElementById('mComparable').textContent=(selectedDataset==='synthetic')?'baseline mode':'trace mode';
+  document.getElementById('mComparable').style.color=(selectedDataset==='synthetic')?'var(--emerald)':'var(--amber)';
+  document.getElementById('stepCounter').textContent='Episode: 0';
+
+  document.getElementById('benchmarkSummary').style.display='none';
+  document.getElementById('benchmarkSummaryTable').innerHTML='';
+  document.getElementById('benchmarkSummaryMeta').textContent='';
+
+  updateStatus('RESET', '#94A3B8');
+  initNetwork();
+}
+
+function renderBenchmarkSummary(payload){
+  const wrap=document.getElementById('benchmarkSummary');
+  const title=document.getElementById('benchmarkTitle');
+  const meta=document.getElementById('benchmarkSummaryMeta');
+  const table=document.getElementById('benchmarkSummaryTable');
+  wrap.style.display='block';
+  const algos=payload.algos||[];
+  const seeds=payload.seeds||[];
+  const dataset=payload.dataset||'unknown';
+  const episodes=payload.episodes||0;
+
+  title.textContent='Benchmark Results - '+String(dataset).toUpperCase()+' Scenario';
+  meta.innerHTML=
+    '<span class="meta-chip">Episodes: '+episodes+'</span>'+
+    '<span class="meta-chip">Algorithms: '+algos.length+'</span>'+
+    '<span class="meta-chip">Seeds: '+seeds.join(', ')+'</span>'+
+    '<span class="meta-chip">Source: '+(payload.summary_csv||'n/a')+'</span>';
+
+  const rows=payload.summary_rows||[];
+  const bestReward=Math.max(...rows.map(r=>Number(r.final_reward_last_k_mean)||-Infinity));
+  const fastestRuntime=Math.min(...rows.map(r=>Number(r.runtime_s_mean)||Infinity));
+
+  let html='<thead><tr>'+
+    '<th>Algorithm</th>'+
+    '<th>Success</th>'+
+    '<th>Mean Final Reward (last-k)</th>'+
+    '<th>Std Dev</th>'+
+    '<th>Avg Runtime (s)</th>'+
+    '</tr></thead><tbody>';
+
+  rows.forEach(r=>{
+    const reward=Number(r.final_reward_last_k_mean)||0;
+    const std=Number(r.final_reward_last_k_std)||0;
+    const runtime=Number(r.runtime_s_mean)||0;
+    const rewardClass=(reward===bestReward)?'best-reward':'';
+    const runtimeClass=(runtime===fastestRuntime)?'fastest-runtime':'';
+
+    html+='<tr>';
+    html+='<td class="algo-cell">'+String(r.algo||'').toUpperCase()+'</td>';
+    html+='<td>'+String(r.runs_ok||0)+' / '+String(r.runs_total||0)+'</td>';
+    html+='<td class="'+rewardClass+'">'+reward.toFixed(3)+'</td>';
+    html+='<td>'+std.toFixed(3)+'</td>';
+    html+='<td class="'+runtimeClass+'">'+runtime.toFixed(3)+'</td>';
+    html+='</tr>';
+  });
+  html+='</tbody>';
+  table.innerHTML=html;
+}
+
+function switchTab(t,el){
+  document.querySelectorAll('.tab').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('lineView').style.display=t==='line'?'grid':'none';
+  document.getElementById('barView').style.display=t==='bar'?'block':'none';
+}
+
+Chart.defaults.color='#94A3B8';
+Chart.defaults.borderColor='#1E293B';
+Chart.defaults.font.family='JetBrains Mono';
+Chart.defaults.font.size=10;
+
+const sharedOpts={
+  responsive:true,
+  maintainAspectRatio:false,
+  animation:{duration:220},
+  plugins:{legend:{display:true,position:'bottom',labels:{boxWidth:8,padding:8}}},
+  scales:{x:{grid:{color:'#1E293B'},ticks:{maxTicksLimit:6}},y:{grid:{color:'#1E293B'}}}
+};
+
+function mkLine(id){
+  return new Chart(document.getElementById(id),{
+    type:'line',
+    data:{labels:[],datasets:ALGOS.map(a=>({
+      label:a.toUpperCase(),
+      data:[],
+      borderColor:ALGO_COLORS[a],
+      backgroundColor:'transparent',
+      borderWidth:1.8,
+      pointRadius:0,
+      tension:0.35
+    }))},
+    options:JSON.parse(JSON.stringify(sharedOpts))
+  });
+}
+
+function mkBar(id){
+  return new Chart(document.getElementById(id),{
+    type:'bar',
+    data:{
+      labels:ALGOS.map(a=>a.toUpperCase()),
+      datasets:[{
+        data:ALGOS.map(()=>0),
+        backgroundColor:ALGOS.map(a=>ALGO_COLORS[a]+'BB'),
+        borderRadius:4,
+        borderWidth:0
+      }]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,animation:{duration:250},
+      plugins:{legend:{display:false}},
+      scales:{x:{grid:{display:false}},y:{grid:{color:'#1E293B'}}}
+    }
+  });
+}
+
+const LC={r:mkLine('cReward'),e:mkLine('cEnergy'),l:mkLine('cLatency'),t:mkLine('cTasks')};
+const BC={r:mkBar('bReward'),e:mkBar('bEnergy'),t:mkBar('bTasks')};
+
+function mean(arr){
+  if(!arr.length) return 0;
+  return arr.reduce((s,v)=>s+v,0)/arr.length;
+}
+
+function variance(arr){
+  if(arr.length<2) return 0;
+  const m=mean(arr);
+  return mean(arr.map(v=>(v-m)*(v-m)));
+}
+
+function updateCharts(){
+  const maxEp=Math.max(0,...ALGOS.map(a=>hist[a].r.length));
+  const labels=Array.from({length:maxEp},(_,i)=>'Ep '+(i+1));
+
+  [['r',LC.r],['e',LC.e],['l',LC.l],['t',LC.t]].forEach(([k,ch])=>{
+    ch.data.labels=labels;
+    ch.data.datasets.forEach(ds=>{
+      const a=ds.label.toLowerCase();
+      ds.data=hist[a][k];
+      ds.borderWidth=(a===selectedAlgo)?2.5:1.2;
+      ds.borderColor=ALGO_COLORS[a]+((a===selectedAlgo)?'':'88');
+    });
+    ch.update();
+  });
+
+  BC.r.data.datasets[0].data=ALGOS.map(a=>mean(hist[a].r));
+  BC.e.data.datasets[0].data=ALGOS.map(a=>variance(hist[a].r));
+  BC.t.data.datasets[0].data=ALGOS.map(a=>hist[a].r.length);
+  BC.r.update();
+  BC.e.update();
+  BC.t.update();
+}
+
+function applyEpisode(d){
+  const algo=d.algo;
+  if(!hist[algo]) return;
+
+  const reward=Number(d.reward||0);
+  const episode=Number(d.episode||0);
+
+  hist[algo].r.push(reward);
+  hist[algo].e.push(hist[algo].r.length>1?mean(hist[algo].r.slice(-5)):reward);
+  hist[algo].l.push(lastReward===null?0:Math.abs(reward-lastReward));
+  hist[algo].t.push(episode);
+
+  latestEpisode=episode;
+  document.getElementById('mEpisode').textContent=String(episode);
+  document.getElementById('mReward').textContent=reward.toFixed(2);
+  document.getElementById('mDataset').textContent=d.dataset || selectedDataset;
+  document.getElementById('mComparable').textContent=d.comparable?'baseline mode':'trace mode';
+  document.getElementById('mComparable').style.color=d.comparable?'var(--emerald)':'var(--amber)';
+  document.getElementById('stepCounter').textContent='Episode: '+episode;
+
+  if(lastReward!==null){
+    const delta=reward-lastReward;
+    const deltaEl=document.getElementById('mRewardDelta');
+    deltaEl.textContent=(delta>=0?'up ':'down ')+delta.toFixed(3);
+    deltaEl.className='metric-delta '+(delta>=0?'up':'down');
+  }
+  lastReward=reward;
+
+  edges.forEach(e=>{
+    const prof=algoProfile();
+    const noise=(Math.random()-0.5)*0.08;
+    const drift=Math.min(0.06,Math.abs(reward)/1200) + (prof.loadBias-0.12)*0.04;
+    e.load=Math.max(0,Math.min(1,e.load+noise+drift));
+  });
+  renderEdgeLoadBars();
+  updateCharts();
+}
+
+const socket=io();
+
+socket.on('connect',()=>{
+  updateStatus('CONNECTED','#10B981');
+  socket.emit('request_config',{});
+});
+
+socket.on('disconnect',()=>{
+  setRunningUI(false);
+  updateStatus('DISCONNECTED','#64748B');
+});
+
+socket.on('status',(d)=>{
+  const msg=(d && d.message)?d.message:'status';
+  if(msg.indexOf('starting')>=0){
+    setRunningUI(true);
+    updateStatus(msg.toUpperCase(),'#00D4FF');
+    if(selectedDataset!=='synthetic'){
+      document.getElementById('mComparable').textContent='trace mode';
+      document.getElementById('mComparable').style.color='var(--amber)';
+    }
+  }else if(msg.indexOf('stop requested')>=0){
+    updateStatus('STOP REQUESTED','#EF4444');
+  }else{
+    updateStatus(msg.toUpperCase(), '#94A3B8');
+  }
+});
+
+socket.on('config_changed',(d)=>{
+  if(!d) return;
+  if(d.algo && ALGOS.includes(d.algo)){
+    selectedAlgo=d.algo;
+    document.querySelectorAll('.algo-btn').forEach(b=>{
+      b.classList.toggle('selected', b.getAttribute('data-algo')===d.algo);
+    });
+  }
+  if(d.dataset){
+    selectedDataset=d.dataset;
+    document.getElementById('scenarioSelect').value=d.dataset;
+    document.getElementById('scenarioTag').textContent=TAG[d.dataset]||String(d.dataset).toUpperCase();
+  }
+  if(d.episodes!==undefined) document.getElementById('episodesInput').value=d.episodes;
+  if(d.seed!==undefined) document.getElementById('seedInput').value=d.seed;
+});
+
+socket.on('episode',(d)=>{
+  setRunningUI(true);
+  if(d && d.algo && ALGOS.includes(d.algo) && d.algo!==selectedAlgo){
+    selectedAlgo=d.algo;
+    document.querySelectorAll('.algo-btn').forEach(b=>{
+      b.classList.toggle('selected', b.getAttribute('data-algo')===selectedAlgo);
+    });
+    
+    initNetwork();
+  }
+  updateStatus((d.algo||selectedAlgo).toUpperCase()+' LIVE','#00D4FF');
+  applyEpisode(d);
+});
+
+socket.on('done',(d)=>{
+  setRunningUI(false);
+  const meta=d && d.meta ? d.meta : {};
+  runtimeSec=meta.runtime_s!==undefined?String(meta.runtime_s):'-';
+  document.getElementById('mRuntime').innerHTML=runtimeSec+'<span class="metric-unit">s</span>';
+  selectedAlgo=meta.algo || selectedAlgo;
+  selectedDataset=meta.dataset || selectedDataset;
+  updateStatus((d.stopped?'STOPPED':'DONE')+' '+selectedAlgo.toUpperCase()+'/'+selectedDataset,'#10B981');
+});
+
+socket.on('benchmark_done',(d)=>{
+  setRunningUI(false);
+  updateStatus('BENCHMARK COMPLETE', '#10B981');
+  renderBenchmarkSummary(d||{});
+});
+
+socket.on('error',(d)=>{
+  setRunningUI(false);
+  updateStatus('ERROR: '+((d&&d.message)?d.message:'unknown'),'#EF4444');
+});
+
+document.getElementById('scenarioSelect').addEventListener('change',function(){
+  selectedDataset=this.value;
+  document.getElementById('scenarioTag').textContent=TAG[selectedDataset]||String(selectedDataset).toUpperCase();
+  initNetwork();
+});
+
+window.addEventListener('resize',()=>{ resizeMap(); initNetwork(); });
+resizeMap();
+initNetwork();
+drawMap();
+updateCharts();
+</script>
+
+</body>
+</html>
