@@ -4,7 +4,7 @@ A comprehensive framework for evaluating multiple multi agent reinforcement lear
 
 ## Overview
 
-This project implements a unified training and benchmarking pipeline for MEC resource scheduling that compares:
+This project implements a unified training and benchmarking pipeline for MEC resource scheduling that includes and compares:
   **RL Algorithms:** MAA2C, MAPPO, MADDPG
   **Baseline Heuristics:** Random, Greedy, FIFO
   **Datasets:** Synthetic (controlled), DCU (trace driven), KAIST (trace driven)
