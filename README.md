@@ -9,7 +9,7 @@ This project implements a unified training and benchmarking pipeline for MEC res
   **Baseline Heuristics:** Random, Greedy, FIFO
   **Datasets:** Synthetic (controlled), DCU (trace driven), KAIST (trace driven)
 
-The framework models joint offloading and resource control decisions, evaluates policies under dynamic conditions, and provides a web dashboard for training visualization and benchmark management.
+The framework models joint offloading and resource control decisions, evaluates policies under dynamic conditions, and provides a web dashboard for training visualisation and benchmark management.
 
 ## Key Features
 
@@ -75,7 +75,7 @@ The framework models joint offloading and resource control decisions, evaluates 
    pip install  r requirements.txt
    ```
 
-## Dependencies
+## Dependencies:
 
 The project requires:
   **matplotlib** (≥3.7.0): Plotting and visualization
@@ -102,7 +102,7 @@ python train.py   algo maa2c   dataset synthetic   episodes 200   seed 0
   `  episodes`: Number of training episodes (default: 200)
   `  seed`: Random seed for reproducibility (default: 0)
 
-### 2. Running Benchmarks
+### 2. Running Benchmarks:
 
 Execute a multi seed benchmark comparing multiple algorithms:
 
